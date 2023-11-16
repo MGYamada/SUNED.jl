@@ -1,17 +1,3 @@
-using MPI
-
-using LinearAlgebra
-using Combinatorics
-
-const N = 6
-const Nc = 4
-
-function initialize()::Vector{Tuple{Tuple{Int, Int}, Float64}}
-    # vcat(map(z -> z[1] % 6 == 0 ? (z, 0.1) : (z, 1.0), collect(zip(1 : 23, 2 : 24))), collect(zip(zip(2 : 2 : 4, 11 : -2 : 9), [0.1, 0.1])), collect(zip(zip(8 : 2 : 10, 17 : -2 : 15), [0.1, 0.1])), collect(zip(zip(14 : 2 : 16, 23 : -2 : 21), [0.1, 0.1])), collect(zip(zip(1 : 6 : 19, 6 : 6 : 24), ones(4))))
-    # vcat(map(z -> z[1] % 4 == 0 ? (z, 0.1) : (z, 1.0), collect(zip(1 : 23, 2 : 24))), collect(zip(zip(2 : 4 : 18, 7 : 4 : 23), 0.1ones(5))), collect(zip(zip(1 : 4 : 21, 4 : 4 : 24), ones(6))))
-    [((1, 2), 1.0), ((2, 3), 1.0), ((3, 4), 1.0), ((4, 5), 1.0), ((5, 6), 1.0), ((6, 1), 1.0)]
-end
-
 function dcinit(D::Int, nproc::Int)
     @. D * (0 : nproc) ÷ nproc + 1
 end
@@ -30,7 +16,7 @@ function pτ!(y::Vector{Float64}, x1::Vector{Float64}, x2::Vector{Float64}, k1::
     end
 end
 
-function gatheringtest!(k1::Int, reverselist::Matrix{Int32}, counts::Matrix{Cint}, u1listaddress::Matrix{Int32}, sendbuf1::Vector{Int32}, recvbuf1::Vector{Int32})
+function gatheringtest!(k1::Int, reverselist::Matrix{Int32}, counts::Matrix{Cint}, u1listaddress::Matrix{Int32}, sendbuf1::Vector{Int32}, recvbuf1::Vector{Int32}, comm)
     @inbounds for i in 1 : length(sendbuf1)
         sendbuf1[i] = u1listaddress[reverselist[i, k1], k1]
     end
@@ -38,7 +24,7 @@ function gatheringtest!(k1::Int, reverselist::Matrix{Int32}, counts::Matrix{Cint
 end
 
 function gathering!(x::Vector{Float64}, z1::Vector{Float64}, k1::Int, reverselist::Matrix{Int32}, counts::Matrix{Cint},
-    recvbuf1list::Matrix{Int32}, sendbuf2::Vector{Float64}, recvbuf2::Vector{Float64})
+    recvbuf1list::Matrix{Int32}, sendbuf2::Vector{Float64}, recvbuf2::Vector{Float64}, comm)
     @inbounds for i in 1 : length(sendbuf2)
         sendbuf2[i] = x[reverselist[i, k1]]
     end
@@ -49,61 +35,61 @@ function gathering!(x::Vector{Float64}, z1::Vector{Float64}, k1::Int, reverselis
 end
 
 function Pij!(a::Int, b::Int, y::Vector{Float64}, x::Vector{Float64}, z1::Vector{Float64}, z2::Vector{Float64},
-    reverselist::Matrix{Int32}, counts::Matrix{Cint}, axial::Matrix{Int8}, recvbuf1list::Matrix{Int32}, sendbuf2::Vector{Float64}, recvbuf2::Vector{Float64})
+    reverselist::Matrix{Int32}, counts::Matrix{Cint}, axial::Matrix{Int8}, recvbuf1list::Matrix{Int32}, sendbuf2::Vector{Float64}, recvbuf2::Vector{Float64}, comm)
     y .= 0.0
     if b - a == 1
-        gathering!(x, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2)
+        gathering!(x, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2, comm)
         pτ!(y, x, z1, a, axial, 1.0)
     else
         z2 .= x
-        gathering!(z2, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2)
+        gathering!(z2, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2, comm)
         τ!(z2, z1, a, axial)
         for k1 in a + 1 : b - 2
-            gathering!(z2, z1, k1, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2)
+            gathering!(z2, z1, k1, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2, comm)
             τ!(z2, z1, k1, axial)
         end
         for k1 in b - 1 : -1 : a + 1
-            gathering!(z2, z1, k1, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2)
+            gathering!(z2, z1, k1, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2, comm)
             τ!(z2, z1, k1, axial)
         end
-        gathering!(z2, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2)
+        gathering!(z2, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2, comm)
         pτ!(y, z2, z1, a, axial, 1.0)
     end
 end
 
 function H!(y::Vector{Float64}, x::Vector{Float64}, z1::Vector{Float64}, z2::Vector{Float64}, NNsorted::Vector{Tuple{Tuple{Int, Int}, Float64}},
-    reverselist::Matrix{Int32}, counts::Matrix{Cint}, axial::Matrix{Int8}, recvbuf1list::Matrix{Int32}, sendbuf2::Vector{Float64}, recvbuf2::Vector{Float64})
+    reverselist::Matrix{Int32}, counts::Matrix{Cint}, axial::Matrix{Int8}, recvbuf1list::Matrix{Int32}, sendbuf2::Vector{Float64}, recvbuf2::Vector{Float64}, comm)
     y .= 0.0
     for ((a, b), w) in NNsorted
         if b - a == 1
-            gathering!(x, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2)
+            gathering!(x, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2, comm)
             pτ!(y, x, z1, a, axial, w)
         else
             z2 .= x
-            gathering!(z2, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2)
+            gathering!(z2, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2, comm)
             τ!(z2, z1, a, axial)
             for k1 in a + 1 : b - 2
-                gathering!(z2, z1, k1, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2)
+                gathering!(z2, z1, k1, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2, comm)
                 τ!(z2, z1, k1, axial)
             end
             for k1 in b - 1 : -1 : a + 1
-                gathering!(z2, z1, k1, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2)
+                gathering!(z2, z1, k1, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2, comm)
                 τ!(z2, z1, k1, axial)
             end
-            gathering!(z2, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2)
+            gathering!(z2, z1, a, reverselist, counts, recvbuf1list, sendbuf2, recvbuf2, comm)
             pτ!(y, z2, z1, a, axial, w)
         end
     end
 end
 
-function main(id::Int, NN::Vector{Tuple{Tuple{Int, Int}, Float64}})
-    NNsorted = map(nn -> ((minimum(nn[1]), maximum(nn[1])), nn[2]), NN)
+function index2youngtableau(Nc::Int, N::Int, id::Int)
     colors = filter(p -> length(p) <= Nc, integer_partitions(N))
+    colors[id]
+end
 
-    color = colors[id]
-    if rank == 0
-        println(color)
-    end
+function run_SUNED(Nc::Int, N::Int, color::Vector{Int}, NN::Vector{Tuple{Tuple{Int, Int}, Float64}}, comm, Ncpu, rank)
+    NNsorted = map(nn -> ((minimum(nn[1]), maximum(nn[1])), nn[2]), NN)
+
     vertex = [[color]]
     edge = Vector{Vector{Int}}[]
     drop = Vector{Vector{Int}}[]
@@ -165,9 +151,6 @@ function main(id::Int, NN::Vector{Tuple{Tuple{Int, Int}, Float64}})
     end
 
     dim = b[1][1]
-    if rank == 0
-        println(dim)
-    end
     grid = dcinit(dim, Ncpu)
     chunk = grid[rank + 2] - grid[rank + 1]
     u1listgrid = zeros(Int16, chunk, N - 1)
@@ -254,7 +237,7 @@ function main(id::Int, NN::Vector{Tuple{Tuple{Int, Int}, Float64}})
     recvbuf1 = similar(sendbuf1)
     recvbuf1list = zeros(Int32, chunk, N - 1)
     for k1 in 1 : N - 1
-        gatheringtest!(k1, reverselist, counts, u1listaddress, sendbuf1, recvbuf1)
+        gatheringtest!(k1, reverselist, counts, u1listaddress, sendbuf1, recvbuf1, comm)
         recvbuf1list[:, k1] .= recvbuf1
     end
     u1listaddress = Array{Int32}(undef, 0, 0)
@@ -266,9 +249,6 @@ function main(id::Int, NN::Vector{Tuple{Tuple{Int, Int}, Float64}})
         push!(di, collect(Nc - i + 1 : Nc - i + c))
     end
     multiplicity = Int(prod(big.(vcat(di...))) * dim ÷ factorial(big(N)))
-    if rank == 0
-        println(multiplicity)
-    end
 
     ketkm1 = zeros(Float64, chunk)
     Ψ = randn(Float64, chunk)
@@ -287,7 +267,7 @@ function main(id::Int, NN::Vector{Tuple{Tuple{Int, Int}, Float64}})
     vold = Inf
     k = 1
     while true
-        H!(ketk1, ketk, z1, z2, NNsorted, reverselist, counts, axial, recvbuf1list, sendbuf2, recvbuf2)
+        H!(ketk1, ketk, z1, z2, NNsorted, reverselist, counts, axial, recvbuf1list, sendbuf2, recvbuf2, comm)
         α = MPI.Allreduce(dot(ketk, ketk1), +, comm)
         push!(αlist, α)
         if k >= 2
@@ -315,16 +295,13 @@ function main(id::Int, NN::Vector{Tuple{Tuple{Int, Int}, Float64}})
         k += 1
     end
     vecs = MPI.bcast(vecs, 0, comm)
-    if rank == 0
-        println(vals[1 : min(10, length(vals))])
-    end
 
     ketkm1 .= 0.0
     ketk .= Ψ
     β = 0.0
     Ψ .*= vecs[1, 1]
     for k in 1 : size(vecs, 1) - 1
-        H!(ketk1, ketk, z1, z2, NNsorted, reverselist, counts, axial, recvbuf1list, sendbuf2, recvbuf2)
+        H!(ketk1, ketk, z1, z2, NNsorted, reverselist, counts, axial, recvbuf1list, sendbuf2, recvbuf2, comm)
         α = αlist[k]
         axpy!(-β, ketkm1, ketk1)
         axpy!(-α, ketk, ketk1)
@@ -340,7 +317,7 @@ function main(id::Int, NN::Vector{Tuple{Tuple{Int, Int}, Float64}})
     P = zeros(N, N)
     for i in 1 : N, j in 1 : N
         if i < j
-            Pij!(i, j, PΨ, Ψ, z1, z2, reverselist, counts, axial, recvbuf1list, sendbuf2, recvbuf2)
+            Pij!(i, j, PΨ, Ψ, z1, z2, reverselist, counts, axial, recvbuf1list, sendbuf2, recvbuf2, comm)
             Pij = MPI.Reduce(dot(Ψ, PΨ), +, 0, comm)
             if rank == 0
                 P[i, j] = Pij
@@ -348,23 +325,6 @@ function main(id::Int, NN::Vector{Tuple{Tuple{Int, Int}, Float64}})
             end
         end
     end
-    if rank == 0
-        println(P)
-    end
+
+    vals, P
 end
-
-MPI.Init()
-
-comm = MPI.COMM_WORLD
-Ncpu = MPI.Comm_size(comm)
-rank = MPI.Comm_rank(comm)
-
-id = parse(Int, ARGS[1])
-
-if rank == 0
-    println(id)
-end
-
-main(id, initialize())
-
-MPI.Finalize()
