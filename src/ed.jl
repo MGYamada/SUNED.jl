@@ -153,7 +153,7 @@ function run_SUNED(Nc::Int, N::Int, color::Vector{Int}, NN::Vector{Tuple{Tuple{I
     dim = b[1][1]
     grid = dcinit(dim, Ncpu)
     chunk = grid[rank + 2] - grid[rank + 1]
-    u1listgrid = zeros(Int16, chunk, N - 1)
+    u1listgrid = zeros(Int, chunk, N - 1)
     u1listaddress = zeros(Int32, chunk, N - 1)
     axial = zeros(Int8, chunk, N - 1)
     for h in 1 : chunk
@@ -232,7 +232,7 @@ function run_SUNED(Nc::Int, N::Int, color::Vector{Int}, NN::Vector{Tuple{Tuple{I
         reverselist[:, k1] .= vcat(jlist...)
         @. counts[:, k1] = length(jlist)
     end
-    u1listgrid = Array{Int16}(undef, 0, 0)
+    u1listgrid = Array{Int}(undef, 0, 0)
     sendbuf1 = zeros(Int32, chunk)
     recvbuf1 = similar(sendbuf1)
     recvbuf1list = zeros(Int32, chunk, N - 1)
